@@ -130,11 +130,11 @@
         <el-table-column label="分类" width="120">
           <template #default="{ row }">
             <el-tag 
-              v-if="row.IntentCategory"
-              :color="row.IntentCategory.color"
+              v-if="row.Category"
+              :color="row.Category.color"
               size="small"
             >
-              {{ row.IntentCategory.name }}
+              {{ row.Category.name }}
             </el-tag>
           </template>
         </el-table-column>
@@ -816,15 +816,15 @@ const loadData = async () => {
     ])
 
     if (intentsRes.status === 'fulfilled' && intentsRes.value.success) {
-      intents.value = intentsRes.value.data?.intents || []
-      pagination.total = intentsRes.value.data?.total || 0
+      intents.value = intentsRes.value.data || []
+      pagination.total = intentsRes.value.pagination?.total || 0
     } else {
       intents.value = []
       pagination.total = 0
     }
 
     if (categoriesRes.status === 'fulfilled' && categoriesRes.value.success) {
-      categories.value = categoriesRes.value.data
+      categories.value = categoriesRes.value.data?.categories || categoriesRes.value.data || []
     } else {
       categories.value = []
     }

@@ -77,6 +77,61 @@ export const categoryAPI = {
   // 获取分类推荐
   getCategoryRecommendations(params = {}) {
     return request.get('/api/categories/recommendations', { params })
+  },
+
+  // 获取分类树结构
+  getCategoryTree(params = {}) {
+    return request.get('/api/categories/tree', { params })
+  },
+
+  // 移动分类（更改父分类）
+  moveCategory(id, data) {
+    return request.put(`/api/categories/${id}/move`, data)
+  },
+
+  // 获取分类面包屑导航
+  getCategoryBreadcrumb(id) {
+    return request.get(`/api/categories/${id}/breadcrumb`)
+  },
+
+  // 获取子分类列表
+  getChildCategories(parentId, params = {}) {
+    return request.get(`/api/categories/${parentId}/children`, { params })
+  },
+
+  // 获取父分类选项（用于创建/编辑时选择）
+  getParentOptions(params = {}) {
+    return request.get('/api/categories/parents', { params })
+  },
+
+  // 获取分类的回复内容
+  getCategoryResponses(categoryId, params = {}) {
+    return request.get(`/api/categories/${categoryId}/responses`, { params })
+  },
+
+  // 添加分类回复内容
+  addCategoryResponse(categoryId, data) {
+    return request.post(`/api/categories/${categoryId}/responses`, data)
+  },
+
+  // 更新分类回复内容
+  updateCategoryResponse(categoryId, responseId, data) {
+    return request.put(`/api/categories/${categoryId}/responses/${responseId}`, data)
+  },
+
+  // 删除分类回复内容
+  deleteCategoryResponse(categoryId, responseId) {
+    return request.delete(`/api/categories/${categoryId}/responses/${responseId}`)
+  },
+
+  // 批量更新分类回复内容
+  batchUpdateCategoryResponses(categoryId, responses) {
+    return request.put(`/api/categories/${categoryId}/responses/batch`, { responses })
+  },
+
+  // 获取AI推荐回复内容
+  getAIRecommendedResponses(categoryId) {
+    return request.get(`/api/categories/${categoryId}/responses/recommendations`)
   }
 }
 

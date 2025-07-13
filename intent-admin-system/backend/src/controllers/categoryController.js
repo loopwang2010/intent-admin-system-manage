@@ -1,7 +1,7 @@
 // 分类管理控制器 - 完整版本
 const { Op } = require('sequelize')
 const {
-  IntentCategory, CoreIntent, NonCoreIntent, sequelize
+  IntentCategory, CoreIntent, NonCoreIntent, PreResponse, sequelize
 } = require('../models')
 const { logOperation } = require('../middleware/auditLogger')
 const { OPERATION_TYPES } = require('../constants/operationTypes')
@@ -10,6 +10,7 @@ const getList = async (req, res) => {
   try {
     const {
       includeStats = 'true',
+      includeChildCount = 'false',
       status,
       search,
       page = 1,
@@ -96,6 +97,14 @@ const getList = async (req, res) => {
         categoryData.nonCoreIntentCount = nonCoreIntentCount
         categoryData.totalIntentCount = coreIntentCount + nonCoreIntentCount
         categoryData.totalUsageCount = 0 // 简化处理
+
+        // 如果需要包含子分类数量
+        if (includeChildCount === 'true' && category.level === 1) {
+          const childCount = await IntentCategory.count({
+            where: { parentId: category.id }
+          })
+          categoryData.childCount = childCount
+        }
 
         return categoryData
       }))
@@ -1337,6 +1346,590 @@ const getCategoryBreadcrumb = async (req, res) => {
   }
 }
 
+// 获取子分类列表
+const getChildCategories = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { includeResponseCount = 'false' } = req.query
+
+    const childCategories = await IntentCategory.findAll({
+      where: { parentId: id },
+      order: [['sortOrder', 'ASC'], ['name', 'ASC']]
+    })
+
+    // 如果需要包含回复数量
+    if (includeResponseCount === 'true') {
+      for (const category of childCategories) {
+        // 统计核心意图的回复数量
+        const coreResponseCount = await PreResponse.count({
+          include: [{
+            model: CoreIntent,
+            as: 'CoreIntent',
+            where: { categoryId: category.id },
+            required: true
+          }]
+        })
+
+        // 统计非核心意图的回复数量
+        const nonCoreResponseCount = await PreResponse.count({
+          include: [{
+            model: NonCoreIntent,
+            as: 'NonCoreIntent',
+            where: { categoryId: category.id },
+            required: true
+          }]
+        })
+
+        category.dataValues.responseCount = coreResponseCount + nonCoreResponseCount
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        categories: childCategories
+      }
+    })
+  } catch (error) {
+    console.error('获取子分类失败:', error)
+    res.status(500).json({
+      success: false,
+      message: '获取子分类失败',
+      error: error.message
+    })
+  }
+}
+
+// 获取父分类选项
+const getParentOptions = async (req, res) => {
+  try {
+    const parentCategories = await IntentCategory.findAll({
+      where: { level: 1 },
+      attributes: ['id', 'name', 'code', 'description'],
+      order: [['sortOrder', 'ASC'], ['name', 'ASC']]
+    })
+
+    res.json({
+      success: true,
+      data: parentCategories
+    })
+  } catch (error) {
+    console.error('获取父分类选项失败:', error)
+    res.status(500).json({
+      success: false,
+      message: '获取父分类选项失败',
+      error: error.message
+    })
+  }
+}
+
+// 获取分类的回复内容
+const getCategoryResponses = async (req, res) => {
+  try {
+    const { id } = req.params
+
+    // 查找分类
+    const category = await IntentCategory.findByPk(id)
+    if (!category) {
+      return res.status(404).json({
+        success: false,
+        message: '分类不存在'
+      })
+    }
+
+    const responses = []
+
+    // 获取核心意图的回复
+    const coreIntents = await CoreIntent.findAll({
+      where: { categoryId: id },
+      include: [{
+        model: PreResponse,
+        as: 'Responses',
+        order: [['priority', 'ASC']]
+      }]
+    })
+
+    for (const intent of coreIntents) {
+      if (intent.Responses) {
+        responses.push(...intent.Responses.map(r => ({
+          ...r.toJSON(),
+          intentName: intent.name,
+          intentType: 'core'
+        })))
+      }
+    }
+
+    // 获取非核心意图的回复
+    const nonCoreIntents = await NonCoreIntent.findAll({
+      where: { categoryId: id },
+      include: [{
+        model: PreResponse,
+        as: 'Responses',
+        order: [['priority', 'ASC']]
+      }]
+    })
+
+    for (const intent of nonCoreIntents) {
+      if (intent.Responses) {
+        responses.push(...intent.Responses.map(r => ({
+          ...r.toJSON(),
+          intentName: intent.name,
+          intentType: 'non-core'
+        })))
+      }
+    }
+
+    // 按优先级排序
+    responses.sort((a, b) => (a.priority || 999) - (b.priority || 999))
+
+    res.json({
+      success: true,
+      data: {
+        category: category,
+        responses: responses
+      }
+    })
+  } catch (error) {
+    console.error('获取分类回复内容失败:', error)
+    res.status(500).json({
+      success: false,
+      message: '获取分类回复内容失败',
+      error: error.message
+    })
+  }
+}
+
+// 添加分类回复内容
+const addCategoryResponse = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { content, type = 'text', priority } = req.body
+
+    // 查找分类
+    const category = await IntentCategory.findByPk(id)
+    if (!category) {
+      return res.status(404).json({
+        success: false,
+        message: '分类不存在'
+      })
+    }
+
+    // 查找或创建非核心意图
+    let nonCoreIntent = await NonCoreIntent.findOne({
+      where: { categoryId: id }
+    })
+
+    if (!nonCoreIntent) {
+      nonCoreIntent = await NonCoreIntent.create({
+        name: `${category.name}默认回复`,
+        description: `${category.name}分类的默认回复意图`,
+        categoryId: id,
+        keywords: JSON.stringify([category.name, '默认', '回复']),
+        confidence: 0.8,
+        priority: 1,
+        status: 'active',
+        language: 'zh-CN',
+        version: '1.0.0'
+      })
+    }
+
+    // 创建回复
+    const response = await PreResponse.create({
+      nonCoreIntentId: nonCoreIntent.id,
+      content,
+      type,
+      priority: priority || 1,
+      status: 'active',
+      language: 'zh-CN',
+      version: '1.0.0'
+    })
+
+    await logOperation(req.user?.id, 'CREATE', 'pre_response', response.id, {
+      content: content.substring(0, 50),
+      categoryId: id
+    })
+
+    res.json({
+      success: true,
+      data: response,
+      message: '回复内容添加成功'
+    })
+  } catch (error) {
+    console.error('添加分类回复内容失败:', error)
+    res.status(500).json({
+      success: false,
+      message: '添加分类回复内容失败',
+      error: error.message
+    })
+  }
+}
+
+// 更新分类回复内容
+const updateCategoryResponse = async (req, res) => {
+  try {
+    const { id, responseId } = req.params
+    const { content, type, priority, status } = req.body
+
+    const response = await PreResponse.findByPk(responseId)
+    if (!response) {
+      return res.status(404).json({
+        success: false,
+        message: '回复内容不存在'
+      })
+    }
+
+    const oldData = { ...response.toJSON() }
+
+    await response.update({
+      content: content !== undefined ? content : response.content,
+      type: type !== undefined ? type : response.type,
+      priority: priority !== undefined ? priority : response.priority,
+      status: status !== undefined ? status : response.status
+    })
+
+    await logOperation(req.user?.id, 'UPDATE', 'pre_response', response.id, {
+      old: oldData,
+      new: response.toJSON()
+    })
+
+    res.json({
+      success: true,
+      data: response,
+      message: '回复内容更新成功'
+    })
+  } catch (error) {
+    console.error('更新分类回复内容失败:', error)
+    res.status(500).json({
+      success: false,
+      message: '更新分类回复内容失败',
+      error: error.message
+    })
+  }
+}
+
+// 删除分类回复内容
+const deleteCategoryResponse = async (req, res) => {
+  try {
+    const { responseId } = req.params
+
+    const response = await PreResponse.findByPk(responseId)
+    if (!response) {
+      return res.status(404).json({
+        success: false,
+        message: '回复内容不存在'
+      })
+    }
+
+    const responseData = { ...response.toJSON() }
+    await response.destroy()
+
+    await logOperation(req.user?.id, 'DELETE', 'pre_response', responseId, responseData)
+
+    res.json({
+      success: true,
+      message: '回复内容删除成功'
+    })
+  } catch (error) {
+    console.error('删除分类回复内容失败:', error)
+    res.status(500).json({
+      success: false,
+      message: '删除分类回复内容失败',
+      error: error.message
+    })
+  }
+}
+
+// 批量更新分类回复内容
+const batchUpdateCategoryResponses = async (req, res) => {
+  const transaction = await sequelize.transaction()
+  
+  try {
+    const { id } = req.params
+    const { responses } = req.body
+
+    // 查找分类
+    const category = await IntentCategory.findByPk(id)
+    if (!category) {
+      await transaction.rollback()
+      return res.status(404).json({
+        success: false,
+        message: '分类不存在'
+      })
+    }
+
+    // 查找或创建非核心意图
+    let nonCoreIntent = await NonCoreIntent.findOne({
+      where: { categoryId: id },
+      transaction
+    })
+
+    if (!nonCoreIntent) {
+      nonCoreIntent = await NonCoreIntent.create({
+        name: `${category.name}默认回复`,
+        description: `${category.name}分类的默认回复意图`,
+        categoryId: id,
+        keywords: JSON.stringify([category.name, '默认', '回复']),
+        confidence: 0.8,
+        priority: 1,
+        status: 'active',
+        language: 'zh-CN',
+        version: '1.0.0'
+      }, { transaction })
+    }
+
+    // 删除现有的回复内容
+    await PreResponse.destroy({
+      where: { nonCoreIntentId: nonCoreIntent.id },
+      transaction
+    })
+
+    // 创建新的回复内容
+    const newResponses = []
+    for (let i = 0; i < responses.length; i++) {
+      const responseData = responses[i]
+      if (responseData.content && responseData.content.trim()) {
+        const newResponse = await PreResponse.create({
+          nonCoreIntentId: nonCoreIntent.id,
+          content: responseData.content.trim(),
+          type: responseData.type || 'text',
+          priority: i + 1,
+          status: responseData.status || 'active',
+          language: 'zh-CN',
+          version: '1.0.0'
+        }, { transaction })
+        
+        newResponses.push(newResponse)
+      }
+    }
+
+    await transaction.commit()
+
+    await logOperation(req.user?.id, 'BATCH_UPDATE', 'pre_response', `category_${id}`, {
+      categoryId: id,
+      responseCount: newResponses.length
+    })
+
+    res.json({
+      success: true,
+      data: {
+        responses: newResponses
+      },
+      message: '回复内容批量更新成功'
+    })
+  } catch (error) {
+    await transaction.rollback()
+    console.error('批量更新分类回复内容失败:', error)
+    res.status(500).json({
+      success: false,
+      message: '批量更新分类回复内容失败',
+      error: error.message
+    })
+  }
+}
+
+// 获取AI推荐回复内容
+const getAIRecommendedResponses = async (req, res) => {
+  try {
+    const { id } = req.params
+
+    // 查找分类
+    const category = await IntentCategory.findByPk(id)
+    if (!category) {
+      return res.status(404).json({
+        success: false,
+        message: '分类不存在'
+      })
+    }
+
+    // 根据分类特点生成推荐回复
+    const recommendations = generateRecommendedResponses(category)
+
+    res.json({
+      success: true,
+      data: {
+        category: category,
+        recommendations: recommendations
+      }
+    })
+  } catch (error) {
+    console.error('获取AI推荐回复失败:', error)
+    res.status(500).json({
+      success: false,
+      message: '获取AI推荐回复失败',
+      error: error.message
+    })
+  }
+}
+
+// 生成推荐回复内容的辅助函数
+function generateRecommendedResponses(category) {
+  const categoryName = category.name
+  const categoryCode = category.code
+
+  let baseTemplates = []
+
+  // 根据分类代码生成不同的回复模板
+  switch (true) {
+    case categoryCode.includes('MUSIC'):
+      baseTemplates = [
+        '正在为您播放音乐...',
+        '音乐已暂停，随时为您继续播放',
+        '正在切换到下一首歌曲',
+        '音量已调整，请享受音乐',
+        '已为您找到相关音乐'
+      ]
+      break
+    case categoryCode.includes('VIDEO'):
+      baseTemplates = [
+        '正在为您播放视频内容...',
+        '视频已暂停，点击继续观看',
+        '正在切换到下一个视频',
+        '视频音量已调整',
+        '正在为您搜索相关视频'
+      ]
+      break
+    case categoryCode.includes('WEATHER'):
+      baseTemplates = [
+        '正在为您查询天气信息...',
+        '今天天气{weather}，温度{temperature}度',
+        '建议您{suggestion}',
+        '明天天气预报：{forecast}',
+        '当前空气质量{airQuality}'
+      ]
+      break
+    case categoryCode.includes('TIME'):
+      baseTemplates = [
+        '现在是{time}',
+        '闹钟已设置为{alarmTime}',
+        '提醒已添加：{reminder}',
+        '距离{event}还有{duration}',
+        '计时器已启动'
+      ]
+      break
+    case categoryCode.includes('SMARTHOME'):
+      baseTemplates = [
+        '{device}已为您打开',
+        '{device}已关闭',
+        '{room}的{device}已调整为{setting}',
+        '智能家居设备状态已更新',
+        '场景模式"{scene}"已激活'
+      ]
+      break
+    case categoryCode.includes('NEWS'):
+      baseTemplates = [
+        '为您播报最新新闻...',
+        '今日头条：{headline}',
+        '正在获取{category}新闻',
+        '新闻播报完毕',
+        '更多详情请关注后续报道'
+      ]
+      break
+    case categoryCode.includes('GAME'):
+      baseTemplates = [
+        '游戏开始！',
+        '恭喜您获得{achievement}！',
+        '当前得分：{score}',
+        '游戏暂停，随时继续',
+        '挑战完成，表现出色！'
+      ]
+      break
+    case categoryCode.includes('TRANSPORT'):
+      baseTemplates = [
+        '正在为您规划路线...',
+        '建议路线：{route}',
+        '预计到达时间：{eta}',
+        '当前路况：{traffic}',
+        '已为您叫车，请稍等'
+      ]
+      break
+    case categoryCode.includes('FOOD'):
+      baseTemplates = [
+        '为您推荐{restaurant}',
+        '菜品信息：{dish}',
+        '正在查找附近美食...',
+        '餐厅已预订成功',
+        '外卖预计{time}送达'
+      ]
+      break
+    case categoryCode.includes('ENCYCLOPEDIA'):
+      baseTemplates = [
+        '根据您的问题，{answer}',
+        '让我为您查询相关信息...',
+        '关于{topic}的解释是：{explanation}',
+        '希望这个回答对您有帮助',
+        '还有其他问题吗？'
+      ]
+      break
+    case categoryCode.includes('TRANSLATE'):
+      baseTemplates = [
+        '正在为您翻译...',
+        '翻译结果：{translation}',
+        '{language}翻译完成',
+        '语言已识别为{language}',
+        '翻译准确度：{accuracy}%'
+      ]
+      break
+    case categoryCode.includes('DEVICE'):
+      baseTemplates = [
+        '设备已连接',
+        '{device}状态正常',
+        '正在控制{device}...',
+        '设备设置已更新',
+        '所有设备运行正常'
+      ]
+      break
+    case categoryCode.includes('SYSTEM'):
+      baseTemplates = [
+        '系统设置已更新',
+        '配置已保存',
+        '系统优化完成',
+        '设置将在重启后生效',
+        '系统状态良好'
+      ]
+      break
+    default:
+      // 通用模板
+      baseTemplates = [
+        `正在为您处理${categoryName}请求...`,
+        `${categoryName}功能已启动`,
+        `${categoryName}操作完成`,
+        `正在${categoryName}中，请稍等`,
+        `${categoryName}服务已准备就绪`
+      ]
+  }
+
+  // 添加通用的情感化回复
+  const emotionalTemplates = [
+    '很高兴为您服务！',
+    '希望能帮到您',
+    '如有疑问，随时告诉我',
+    '我会尽力帮助您',
+    '祝您使用愉快！'
+  ]
+
+  // 合并所有模板并添加元数据
+  const allRecommendations = [
+    ...baseTemplates.map((content, index) => ({
+      content,
+      type: 'text',
+      priority: index + 1,
+      status: 'active',
+      source: 'ai-functional',
+      confidence: 0.9
+    })),
+    ...emotionalTemplates.map((content, index) => ({
+      content,
+      type: 'text',
+      priority: baseTemplates.length + index + 1,
+      status: 'active',
+      source: 'ai-emotional',
+      confidence: 0.8
+    }))
+  ]
+
+  return allRecommendations.slice(0, 8) // 限制推荐数量
+}
+
 module.exports = {
   getList,
   getById,
@@ -1353,5 +1946,13 @@ module.exports = {
   analyzeCategoryIntents,
   getCategoryTree,
   moveCategory,
-  getCategoryBreadcrumb
+  getCategoryBreadcrumb,
+  getChildCategories,
+  getParentOptions,
+  getCategoryResponses,
+  addCategoryResponse,
+  updateCategoryResponse,
+  deleteCategoryResponse,
+  batchUpdateCategoryResponses,
+  getAIRecommendedResponses
 }

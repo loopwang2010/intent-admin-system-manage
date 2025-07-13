@@ -54,6 +54,12 @@ router.put('/sort',
   categoryController.updateSort
 );
 
+// 获取父分类选项 - 必须在 /:id 路由之前
+router.get('/parents', 
+  requirePermission(['category:read', '*']),
+  categoryController.getParentOptions
+);
+
 // 获取分类详情
 router.get('/:id', 
   requirePermission(['category:read', '*']),
@@ -82,6 +88,48 @@ router.post('/:id/analyze',
 router.get('/:id/breadcrumb', 
   requirePermission(['category:read', '*']),
   categoryController.getCategoryBreadcrumb
+);
+
+// 获取分类的回复内容
+router.get('/:id/responses', 
+  requirePermission(['category:read', 'response:read', '*']),
+  categoryController.getCategoryResponses
+);
+
+// 获取AI推荐回复内容
+router.get('/:id/responses/recommendations', 
+  requirePermission(['category:read', 'response:read', '*']),
+  categoryController.getAIRecommendedResponses
+);
+
+// 添加分类回复内容
+router.post('/:id/responses', 
+  requirePermission(['category:update', 'response:create', '*']),
+  categoryController.addCategoryResponse
+);
+
+// 批量更新分类回复内容
+router.put('/:id/responses/batch', 
+  requirePermission(['category:update', 'response:update', '*']),
+  categoryController.batchUpdateCategoryResponses
+);
+
+// 获取子分类列表
+router.get('/:id/children', 
+  requirePermission(['category:read', '*']),
+  categoryController.getChildCategories
+);
+
+// 更新单个分类回复内容
+router.put('/:id/responses/:responseId', 
+  requirePermission(['category:update', 'response:update', '*']),
+  categoryController.updateCategoryResponse
+);
+
+// 删除分类回复内容
+router.delete('/:id/responses/:responseId', 
+  requirePermission(['category:update', 'response:delete', '*']),
+  categoryController.deleteCategoryResponse
 );
 
 // 移动分类到新父分类

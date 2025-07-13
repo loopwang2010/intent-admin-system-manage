@@ -1,0 +1,74 @@
+[
+  {
+    "id": 1001,
+    "content": "现在是{time}，正是美好的一天呢～",
+    "category": "时间查询",
+    "type": "info",
+    "variables": [
+      "time"
+    ],
+    "status": "active",
+    "usageCount": 1250
+  },
+  {
+    "id": 1002,
+    "content": "今天是{date}，{weekday}，希望你今天过得愉快～",
+    "category": "日期查询",
+    "type": "info",
+    "variables": [
+      "date",
+      "weekday"
+    ],
+    "status": "active",
+    "usageCount": 980
+  },
+  {
+    "id": 2001,
+    "content": "今天{location}天气{weather}，温度{temperature}度，{suggestion}",
+    "category": "天气查询",
+    "type": "info",
+    "variables": [
+      "location",
+      "weather",
+      "temperature",
+      "suggestion"
+    ],
+    "status": "active",
+    "usageCount": 2100
+  },
+  {
+    "id": 3001,
+    "content": "好的，正在为你播放{song}，希望你喜欢～",
+    "category": "播放音乐",
+    "type": "action",
+    "variables": [
+      "song"
+    ],
+    "status": "active",
+    "usageCount": 3200
+  },
+  {
+    "id": 4001,
+    "content": "{room}的灯已经{action}，环境更{feeling}了～",
+    "category": "灯光控制",
+    "type": "action",
+    "variables": [
+      "room",
+      "action",
+      "feeling"
+    ],
+    "status": "active",
+    "usageCount": 2800
+  },
+  {
+    "id": 5001,
+    "content": "好的，已经设置{time}的闹钟，到时候我会准时叫醒你～",
+    "category": "设置闹钟",
+    "type": "action",
+    "variables": [
+      "time"
+    ],
+    "status": "active",
+    "usageCount": 1850
+  }
+]

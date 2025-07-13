@@ -1,0 +1,292 @@
+[
+  {
+    "id": 3001,
+    "content": "好的，正在为你播放{song}，希望你喜欢这首歌～",
+    "category": "播放音乐",
+    "type": "action",
+    "variables": [
+      "song"
+    ],
+    "status": "active",
+    "usageCount": 3200
+  },
+  {
+    "id": 3002,
+    "content": "已暂停播放，需要继续的时候告诉我哦～",
+    "category": "暂停播放",
+    "type": "action",
+    "variables": [],
+    "status": "active",
+    "usageCount": 1800
+  },
+  {
+    "id": 3003,
+    "content": "好的，已经切换到{direction}，现在播放{song}～",
+    "category": "切换歌曲",
+    "type": "action",
+    "variables": [
+      "direction",
+      "song"
+    ],
+    "status": "active",
+    "usageCount": 2450
+  },
+  {
+    "id": 3004,
+    "content": "音量已{action}到{level}，现在的音量怎么样？",
+    "category": "音量控制",
+    "type": "action",
+    "variables": [
+      "action",
+      "level"
+    ],
+    "status": "active",
+    "usageCount": 1350
+  },
+  {
+    "id": 4001,
+    "content": "{room}的灯已经{action}了，现在环境更{feeling}了～",
+    "category": "灯光控制",
+    "type": "action",
+    "variables": [
+      "room",
+      "action",
+      "feeling"
+    ],
+    "status": "active",
+    "usageCount": 2800
+  },
+  {
+    "id": 4002,
+    "content": "空调已{action}，温度设置为{temperature}度，模式为{mode}～",
+    "category": "空调控制",
+    "type": "action",
+    "variables": [
+      "action",
+      "temperature",
+      "mode"
+    ],
+    "status": "active",
+    "usageCount": 1900
+  },
+  {
+    "id": 4003,
+    "content": "{room}的窗帘已经{action}，{effect}让房间更舒适了～",
+    "category": "窗帘控制",
+    "type": "action",
+    "variables": [
+      "room",
+      "action",
+      "effect"
+    ],
+    "status": "active",
+    "usageCount": 680
+  },
+  {
+    "id": 2001,
+    "content": "今天{location}天气{weather}，温度{temperature}度，{suggestion}",
+    "category": "天气查询",
+    "type": "info",
+    "variables": [
+      "location",
+      "weather",
+      "temperature",
+      "suggestion"
+    ],
+    "status": "active",
+    "usageCount": 2100
+  },
+  {
+    "id": 2002,
+    "content": "现在是{time}，{date}，正是美好的{period}呢～",
+    "category": "时间查询",
+    "type": "info",
+    "variables": [
+      "time",
+      "date",
+      "period"
+    ],
+    "status": "active",
+    "usageCount": 1250
+  },
+  {
+    "id": 2003,
+    "content": "为你播报今天的{type}新闻：{headline}...",
+    "category": "新闻播报",
+    "type": "info",
+    "variables": [
+      "type",
+      "headline"
+    ],
+    "status": "active",
+    "usageCount": 1450
+  },
+  {
+    "id": 5001,
+    "content": "好的，已经设置{time}的闹钟，到时候我会准时叫醒你～",
+    "category": "设置闹钟",
+    "type": "action",
+    "variables": [
+      "time"
+    ],
+    "status": "active",
+    "usageCount": 1850
+  },
+  {
+    "id": 5002,
+    "content": "收到！我会在{time}提醒你{event}，别担心会忘记～",
+    "category": "设置提醒",
+    "type": "action",
+    "variables": [
+      "time",
+      "event"
+    ],
+    "status": "active",
+    "usageCount": 1320
+  },
+  {
+    "id": 5003,
+    "content": "{duration}倒计时开始，我会在时间到了告诉你～",
+    "category": "倒计时",
+    "type": "action",
+    "variables": [
+      "duration"
+    ],
+    "status": "active",
+    "usageCount": 780
+  },
+  {
+    "id": 6001,
+    "content": "{expression} = {result}，计算完成！",
+    "category": "数学计算",
+    "type": "calculation",
+    "variables": [
+      "expression",
+      "result"
+    ],
+    "status": "active",
+    "usageCount": 890
+  },
+  {
+    "id": 6002,
+    "content": "{value}{unit1}等于{result}{unit2}～",
+    "category": "单位换算",
+    "type": "calculation",
+    "variables": [
+      "value",
+      "unit1",
+      "result",
+      "unit2"
+    ],
+    "status": "active",
+    "usageCount": 450
+  },
+  {
+    "id": 7001,
+    "content": "哈哈，来听个笑话：{joke}～",
+    "category": "讲笑话",
+    "type": "entertainment",
+    "variables": [
+      "joke"
+    ],
+    "status": "active",
+    "usageCount": 1200
+  },
+  {
+    "id": 7002,
+    "content": "为你朗诵一首{poet}的{poem}：{content}～",
+    "category": "诗词朗诵",
+    "type": "entertainment",
+    "variables": [
+      "poet",
+      "poem",
+      "content"
+    ],
+    "status": "active",
+    "usageCount": 520
+  },
+  {
+    "id": 7003,
+    "content": "为你播放{type}故事《{title}》，希望你喜欢～",
+    "category": "故事播放",
+    "type": "entertainment",
+    "variables": [
+      "type",
+      "title"
+    ],
+    "status": "active",
+    "usageCount": 850
+  },
+  {
+    "id": 8001,
+    "content": "\"{text}\"的{target_lang}翻译是：{translation}",
+    "category": "翻译功能",
+    "type": "translation",
+    "variables": [
+      "text",
+      "target_lang",
+      "translation"
+    ],
+    "status": "active",
+    "usageCount": 1200
+  },
+  {
+    "id": 8002,
+    "content": "根据我的了解，{answer}。希望这个回答对你有帮助～",
+    "category": "百科问答",
+    "type": "knowledge",
+    "variables": [
+      "answer"
+    ],
+    "status": "active",
+    "usageCount": 1850
+  },
+  {
+    "id": 9001,
+    "content": "已将{item}添加到你的购物清单，当前清单有{count}项～",
+    "category": "购物清单",
+    "type": "list_management",
+    "variables": [
+      "item",
+      "count"
+    ],
+    "status": "active",
+    "usageCount": 650
+  },
+  {
+    "id": 9002,
+    "content": "推荐你试试{dish}，做法：{recipe}，营养又美味～",
+    "category": "食谱推荐",
+    "type": "suggestion",
+    "variables": [
+      "dish",
+      "recipe"
+    ],
+    "status": "active",
+    "usageCount": 740
+  },
+  {
+    "id": 10001,
+    "content": "关于健康，建议你{advice}。{details}，保持身体健康很重要哦～",
+    "category": "健康建议",
+    "type": "health_advice",
+    "variables": [
+      "advice",
+      "details"
+    ],
+    "status": "active",
+    "usageCount": 580
+  },
+  {
+    "id": 10002,
+    "content": "开始{minutes}分钟的冥想：{instruction}，让我们一起放松心情～",
+    "category": "冥想引导",
+    "type": "relaxation",
+    "variables": [
+      "minutes",
+      "instruction"
+    ],
+    "status": "active",
+    "usageCount": 420
+  }
+]

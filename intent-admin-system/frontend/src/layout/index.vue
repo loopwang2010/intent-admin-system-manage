@@ -21,6 +21,11 @@
           <span v-if="!sidebarCollapsed" class="menu-text">意图分类</span>
         </div>
         
+        <div class="menu-item" @click="goToRoute('/cascading-categories')">
+          <span class="menu-icon">🗂️</span>
+          <span v-if="!sidebarCollapsed" class="menu-text">级联分类管理</span>
+        </div>
+        
         <div class="menu-item" @click="goToRoute('/core-intents')">
           <span class="menu-icon">⭐</span>
           <span v-if="!sidebarCollapsed" class="menu-text">核心意图</span>

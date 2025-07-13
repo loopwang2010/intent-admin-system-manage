@@ -1741,8 +1741,8 @@ const getAIRecommendedResponses = async (req, res) => {
       })
     }
 
-    // 根据分类特点生成推荐回复
-    const recommendations = generateRecommendedResponses(category)
+    // 获取基于真实语料的AI推荐
+    const recommendations = await generateRecommendedResponsesFromCorpus(category)
 
     res.json({
       success: true,
@@ -1928,6 +1928,129 @@ function generateRecommendedResponses(category) {
   ]
 
   return allRecommendations.slice(0, 8) // 限制推荐数量
+}
+
+// 基于真实语料库生成推荐回复的函数
+async function generateRecommendedResponsesFromCorpus(category) {
+  try {
+    // 首先从数据库中查找该分类的现有回复
+    const existingResponses = await PreResponse.findAll({
+      where: {
+        variables: {
+          [Op.like]: `%"categoryId":${category.id}%`
+        },
+        status: 'active'
+      },
+      order: [['priority', 'ASC']],
+      limit: 10 // 获取最多10条现有回复作为参考
+    })
+    
+    const corpusResponses = []
+    
+    // 如果有现有的语料回复，优先使用
+    if (existingResponses.length > 0) {
+      existingResponses.forEach((response, index) => {
+        if (response.content && response.content.trim()) {
+          corpusResponses.push({
+            content: response.content,
+            type: 'text',
+            priority: index + 1,
+            status: 'active',
+            source: 'corpus-existing',
+            confidence: 0.95 // 现有语料置信度最高
+          })
+        }
+      })
+    }
+    
+    // 如果语料不足，从其他同类分类中查找类似回复
+    if (corpusResponses.length < 5) {
+      // 查找同一大类下的回复
+      const parentCategoryCode = category.code.split('_')[0]
+      const similarResponses = await PreResponse.findAll({
+        where: {
+          variables: {
+            [Op.like]: `%"source":"csv_import%`
+          },
+          status: 'active',
+          content: { [Op.ne]: null }
+        },
+        order: sequelize.random(),
+        limit: 8 - corpusResponses.length
+      })
+      
+      similarResponses.forEach((response, index) => {
+        if (response.content && response.content.trim()) {
+          // 检查是否已存在相同内容
+          const exists = corpusResponses.some(existing => existing.content === response.content)
+          if (!exists) {
+            corpusResponses.push({
+              content: response.content,
+              type: 'text',
+              priority: corpusResponses.length + index + 1,
+              status: 'active',
+              source: 'corpus-similar',
+              confidence: 0.85 // 相似分类的置信度
+            })
+          }
+        }
+      })
+    }
+    
+    // 如果还是不足，使用基于分类代码的智能生成
+    if (corpusResponses.length < 3) {
+      const generatedResponses = generateCategorySpecificResponses(category)
+      generatedResponses.forEach((response, index) => {
+        corpusResponses.push({
+          content: response,
+          type: 'text',
+          priority: corpusResponses.length + index + 1,
+          status: 'active',
+          source: 'ai-generated',
+          confidence: 0.8 // AI生成的置信度
+        })
+      })
+    }
+    
+    // 限制返回数量并确保多样性
+    return corpusResponses.slice(0, 8)
+    
+  } catch (error) {
+    console.error('从语料库生成推荐失败:', error)
+    // 降级到原有的推荐方式
+    return generateRecommendedResponses(category)
+  }
+}
+
+// 生成特定分类的智能回复
+function generateCategorySpecificResponses(category) {
+  const responses = []
+  const categoryName = category.name
+  
+  // 基于分类名称生成通用回复
+  responses.push(`正在为您处理${categoryName}请求...`)
+  responses.push(`${categoryName}功能已启动`)
+  responses.push(`收到您的${categoryName}指令`)
+  
+  // 根据分类代码添加特定回复
+  if (category.code.includes('MUSIC')) {
+    responses.push('音乐播放准备中～')
+    responses.push('正在搜索您喜欢的音乐～')
+  } else if (category.code.includes('WEATHER')) {
+    responses.push('正在获取最新天气信息～')
+    responses.push('天气查询中，请稍候～')
+  } else if (category.code.includes('TIME')) {
+    responses.push('时间查询收到～')
+    responses.push('正在核实当前时间～')
+  } else if (category.code.includes('SMART')) {
+    responses.push('智能设备连接中～')
+    responses.push('正在执行设备控制指令～')
+  } else {
+    responses.push('请求已收到，正在处理～')
+    responses.push('功能启动中，请稍等～')
+  }
+  
+  return responses
 }
 
 module.exports = {

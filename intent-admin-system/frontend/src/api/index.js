@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores'
+import router from '@/router'
 
 // 创建axios实例
 const api = axios.create({
@@ -104,8 +105,16 @@ api.interceptors.response.use(
           // 未授权，清除认证状态并跳转到登录页
           ElMessage.error('登录已过期，请重新登录')
           await authStore.logout()
-          if (window.location.pathname !== '/login') {
-            window.location.href = '/login'
+          // 使用Vue Router进行跳转，避免状态混乱
+          if (router.currentRoute.value.path !== '/login') {
+            // 延迟跳转，避免干扰当前请求处理
+            setTimeout(() => {
+              router.push('/login').catch(err => {
+                // 如果路由跳转失败，回退到直接跳转
+                console.warn('Router push failed, using location.href:', err)
+                window.location.href = '/login'
+              })
+            }, 100)
           }
           break
           

@@ -8,6 +8,7 @@ import Dashboard from '@/views/Dashboard.vue'
 import CoreIntents from '@/views/CoreIntents.vue'
 import NonCoreIntents from '@/views/NonCoreIntents.vue'
 import Categories from '@/views/Categories.vue'
+import CascadingCategories from '@/views/CascadingCategories.vue'
 import PreResponses from '@/views/PreResponses.vue'
 import IntentTest from '@/views/IntentTest.vue'
 import Analytics from '@/views/Analytics.vue'
@@ -60,6 +61,17 @@ const routes = [
           icon: 'Collection',
           requiresAuth: true,
           permissions: ['admin', 'editor', 'viewer']
+        }
+      },
+      {
+        path: 'cascading-categories',
+        name: 'CascadingCategories',
+        component: CascadingCategories,
+        meta: {
+          title: '级联分类管理',
+          icon: 'Folder',
+          requiresAuth: true,
+          permissions: ['admin', 'editor']
         }
       },
       {

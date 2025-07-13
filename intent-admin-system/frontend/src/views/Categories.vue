@@ -33,12 +33,47 @@
     </div>
 
     <div class="page-header">
-      <h1>意图分类管理</h1>
+      <div class="header-left">
+        <h1>意图分类管理</h1>
+        <!-- 面包屑导航 -->
+        <div class="breadcrumb" v-if="breadcrumb.length > 0">
+          <span 
+            v-for="(item, index) in breadcrumb" 
+            :key="item.id"
+            class="breadcrumb-item"
+            :class="{ active: index === breadcrumb.length - 1 }"
+            @click="navigateToCategory(item)"
+          >
+            {{ item.name }}
+            <span v-if="index < breadcrumb.length - 1" class="breadcrumb-separator">></span>
+          </span>
+        </div>
+      </div>
       <div class="header-actions">
+        <!-- 视图切换 -->
+        <el-radio-group v-model="viewMode" size="small" @change="handleViewModeChange">
+          <el-radio-button label="tree">树形</el-radio-button>
+          <el-radio-button label="table">表格</el-radio-button>
+        </el-radio-group>
+        
+        <!-- 层级筛选 -->
+        <el-select 
+          v-model="selectedLevel" 
+          placeholder="选择层级" 
+          size="small" 
+          style="width: 120px"
+          @change="handleLevelChange"
+          clearable
+        >
+          <el-option label="全部层级" value="" />
+          <el-option label="一级分类" :value="1" />
+          <el-option label="二级分类" :value="2" />
+        </el-select>
+
         <el-input
           v-model="searchKeyword"
           placeholder="搜索分类..."
-          style="width: 200px; margin-right: 12px;"
+          style="width: 200px;"
           @input="handleSearch"
           clearable
         >
@@ -50,19 +85,71 @@
           <el-icon><Plus /></el-icon>
           新建分类
         </el-button>
-        <el-button @click="exportData">
-          <el-icon><Download /></el-icon>
-          导出
-        </el-button>
-        <el-button @click="showAnalytics">
-          <el-icon><TrendCharts /></el-icon>
-          数据分析
-        </el-button>
+        <el-dropdown>
+          <el-button>
+            更多操作
+            <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item @click="exportData">
+                <el-icon><Download /></el-icon>
+                导出数据
+              </el-dropdown-item>
+              <el-dropdown-item @click="showAnalytics">
+                <el-icon><TrendCharts /></el-icon>
+                数据分析
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
     </div>
 
     <div class="table-card">
+      <!-- 树形视图 -->
+      <div v-if="viewMode === 'tree'" class="tree-view">
+        <el-tree
+          :data="treeData"
+          :props="treeProps"
+          :expand-on-click-node="false"
+          :default-expand-all="true"
+          node-key="id"
+          ref="categoryTree"
+          class="category-tree"
+        >
+          <template #default="{ node, data }">
+            <div class="tree-node">
+              <div class="node-content">
+                <span class="node-icon">{{ data.icon || '📂' }}</span>
+                <span class="node-label">{{ data.name }}</span>
+                <span v-if="data.level" class="node-level">L{{ data.level }}</span>
+                <el-tag v-if="data.intentCount" type="info" size="small">
+                  {{ data.intentCount }}个意图
+                </el-tag>
+              </div>
+              <div class="node-actions">
+                <el-button type="primary" link size="small" @click.stop="viewStats(data)">
+                  统计
+                </el-button>
+                <el-button type="primary" link size="small" @click.stop="editItem(data)">
+                  编辑
+                </el-button>
+                <el-button v-if="data.level === 1" type="success" link size="small" @click.stop="addChild(data)">
+                  添加子分类
+                </el-button>
+                <el-button type="danger" link size="small" @click.stop="deleteItem(data)">
+                  删除
+                </el-button>
+              </div>
+            </div>
+          </template>
+        </el-tree>
+      </div>
+
+      <!-- 表格视图 -->
       <el-table 
+        v-else
         :data="categories" 
         v-loading="loading"
         stripe
@@ -71,13 +158,23 @@
       >
         <el-table-column type="selection" width="55" />
         
-        <el-table-column label="分类信息" min-width="200">
+        <el-table-column label="分类信息" min-width="220">
           <template #default="{ row }">
             <div class="category-info">
-              <div class="category-icon">{{ row.icon || '📂' }}</div>
-              <div>
-                <div class="category-name">{{ row.name }}</div>
+              <div class="category-icon" :style="{ background: row.color || 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' }">
+                {{ getCategoryIcon(row.icon) }}
+              </div>
+              <div class="category-details">
+                <div class="category-title-row">
+                  <span class="category-name">{{ row.name }}</span>
+                  <el-tag v-if="row.level" :type="row.level === 1 ? 'primary' : 'success'" size="small" class="level-tag">
+                    L{{ row.level }}
+                  </el-tag>
+                </div>
                 <div class="category-name-en" v-if="row.nameEn">{{ row.nameEn }}</div>
+                <div v-if="row.parentName" class="parent-category">
+                  父分类: {{ row.parentName }}
+                </div>
               </div>
             </div>
           </template>
@@ -118,7 +215,7 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="240" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="viewStats(row)">
               统计
@@ -128,6 +225,9 @@
             </el-button>
             <el-button type="primary" link size="small" @click="editItem(row)">
               编辑
+            </el-button>
+            <el-button v-if="row.level === 1" type="success" link size="small" @click="addChild(row)">
+              添加子分类
             </el-button>
             <el-button type="danger" link size="small" @click="deleteItem(row)">
               删除
@@ -161,9 +261,22 @@
             <label>名称</label>
             <input v-model="form.name" type="text" required />
           </div>
+          <div class="form-item" v-if="showParentSelector">
+            <label>父分类</label>
+            <select v-model="form.parentId">
+              <option :value="null">无（创建一级分类）</option>
+              <option v-for="parent in parentOptions" :key="parent.id" :value="parent.id">
+                {{ parent.name }}
+              </option>
+            </select>
+          </div>
           <div class="form-item">
             <label>描述</label>
             <textarea v-model="form.description"></textarea>
+          </div>
+          <div class="form-item">
+            <label>图标</label>
+            <input v-model="form.icon" type="text" placeholder="📂" />
           </div>
           <div class="form-item">
             <label>状态</label>
@@ -187,7 +300,7 @@ import { ref, reactive, onMounted, computed, nextTick } from 'vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { 
   Search, Plus, Download, TrendCharts, Edit, Delete, 
-  Warning, InfoFilled 
+  Warning, InfoFilled, ArrowDown 
 } from '@element-plus/icons-vue'
 import { categoryAPI } from '@/api/categories'
 import { debounce } from 'lodash-es'
@@ -195,6 +308,7 @@ import { debounce } from 'lodash-es'
 // 响应式数据
 const loading = ref(false)
 const categories = ref([])
+const treeData = ref([])
 const analytics = ref(null)
 const searchKeyword = ref('')
 const dialogVisible = ref(false)
@@ -203,6 +317,11 @@ const analysisDialogVisible = ref(false)
 const editingCategory = ref(null)
 const selectedStats = ref(null)
 const selectedAnalysis = ref(null)
+const parentOptions = ref([])
+const breadcrumb = ref([])
+const viewMode = ref('table')
+const selectedLevel = ref('')
+const currentParentId = ref(null)
 
 // 分页数据
 const pagination = reactive({
@@ -225,11 +344,18 @@ const form = reactive({
   description: '',
   descriptionEn: '',
   icon: '📂',
+  parentId: null,
   sortOrder: 0,
   status: 'active',
   tags: [],
   version: '1.0.0'
 })
+
+// 树形组件配置
+const treeProps = {
+  children: 'children',
+  label: 'name'
+}
 
 // 表单验证规则
 const formRules = {
@@ -245,33 +371,74 @@ const formRules = {
 
 // 计算属性
 const isEditing = computed(() => !!editingCategory.value)
+const showParentSelector = computed(() => {
+  return !isEditing.value || (editingCategory.value && editingCategory.value.level !== 1)
+})
 
 // 获取分类列表
 const fetchCategories = async () => {
   loading.value = true
   try {
-    const params = {
-      page: pagination.page,
-      limit: pagination.limit,
-      includeStats: true,
-      ...sortParams
-    }
-    
-    if (searchKeyword.value) {
-      params.search = searchKeyword.value
-    }
+    if (viewMode.value === 'tree') {
+      await fetchTreeData()
+    } else {
+      const params = {
+        page: pagination.page,
+        limit: pagination.limit,
+        includeStats: true,
+        includeParentName: true,
+        ...sortParams
+      }
+      
+      if (searchKeyword.value) {
+        params.search = searchKeyword.value
+      }
+      
+      if (selectedLevel.value) {
+        params.level = selectedLevel.value
+      }
 
-    const response = await categoryAPI.getCategories(params)
-    categories.value = response.data.categories || []
-    
-    if (response.data.pagination) {
-      Object.assign(pagination, response.data.pagination)
+      const response = await categoryAPI.getCategories(params)
+      categories.value = response.data.categories || []
+      
+      if (response.data.pagination) {
+        Object.assign(pagination, response.data.pagination)
+      }
     }
   } catch (error) {
     ElMessage.error('获取分类列表失败')
     console.error('Error fetching categories:', error)
   } finally {
     loading.value = false
+  }
+}
+
+// 获取树形数据
+const fetchTreeData = async () => {
+  try {
+    const params = {}
+    if (searchKeyword.value) {
+      params.search = searchKeyword.value
+    }
+    if (selectedLevel.value) {
+      params.level = selectedLevel.value
+    }
+    
+    const response = await categoryAPI.getCategoryTree(params)
+    treeData.value = response.data || []
+  } catch (error) {
+    ElMessage.error('获取树形数据失败')
+    console.error('Error fetching tree data:', error)
+  }
+}
+
+// 获取父分类选项
+const fetchParentOptions = async () => {
+  try {
+    const response = await categoryAPI.getParentOptions()
+    parentOptions.value = response.data || []
+  } catch (error) {
+    console.error('Error fetching parent options:', error)
   }
 }
 
@@ -290,6 +457,45 @@ const handleSearch = debounce(() => {
   pagination.page = 1
   fetchCategories()
 }, 300)
+
+// 视图模式切换
+const handleViewModeChange = () => {
+  fetchCategories()
+}
+
+// 层级筛选
+const handleLevelChange = () => {
+  pagination.page = 1
+  fetchCategories()
+}
+
+// 面包屑导航
+const navigateToCategory = (category) => {
+  if (category.id) {
+    currentParentId.value = category.id
+    fetchCategories()
+  }
+}
+
+// 添加子分类
+const addChild = (parentCategory) => {
+  form.parentId = parentCategory.id
+  editingCategory.value = null
+  Object.assign(form, {
+    name: '',
+    nameEn: '',
+    description: '',
+    descriptionEn: '',
+    icon: '📂',
+    parentId: parentCategory.id,
+    sortOrder: 0,
+    status: 'active',
+    tags: [],
+    version: '1.0.0'
+  })
+  fetchParentOptions()
+  dialogVisible.value = true
+}
 
 // 排序处理
 const handleSortChange = ({ prop, order }) => {
@@ -347,11 +553,13 @@ const showDialog = () => {
     description: '',
     descriptionEn: '',
     icon: '📂',
+    parentId: null,
     sortOrder: 0,
     status: 'active',
     tags: [],
     version: '1.0.0'
   })
+  fetchParentOptions()
   dialogVisible.value = true
 }
 
@@ -364,11 +572,13 @@ const editItem = (category) => {
     description: category.description || '',
     descriptionEn: category.descriptionEn || '',
     icon: category.icon || '📂',
+    parentId: category.parentId || null,
     sortOrder: category.sortOrder || 0,
     status: category.status || 'active',
     tags: category.tags ? (typeof category.tags === 'string' ? JSON.parse(category.tags) : category.tags) : [],
     version: category.version || '1.0.0'
   })
+  fetchParentOptions()
   dialogVisible.value = true
 }
 
@@ -492,10 +702,22 @@ const showAnalytics = () => {
   })
 }
 
+// 图标显示逻辑：只显示emoji或单字符
+function getCategoryIcon(icon) {
+  if (!icon) return '📂';
+  // 判断是否为emoji或单字符
+  if (icon.length === 1 || /[\uD800-\uDBFF][\uDC00-\uDFFF]/.test(icon)) {
+    return icon;
+  }
+  // 否则返回默认
+  return '📂';
+}
+
 // 生命周期
 onMounted(() => {
   fetchCategories()
   fetchAnalytics()
+  fetchParentOptions()
 })
 </script>
 
@@ -564,12 +786,47 @@ onMounted(() => {
 .page-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 24px;
   background: white;
   padding: 20px 24px;
   border-radius: 12px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+.header-left {
+  flex: 1;
+}
+
+/* 面包屑导航 */
+.breadcrumb {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.breadcrumb-item {
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.breadcrumb-item:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.breadcrumb-item.active {
+  color: #3b82f6;
+  font-weight: 500;
+}
+
+.breadcrumb-separator {
+  margin: 0 8px;
+  color: #d1d5db;
 }
 
 .page-header h1 {
@@ -597,30 +854,104 @@ onMounted(() => {
 .category-info {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
 }
-
 .category-icon {
-  font-size: 24px;
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  font-size: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(245,87,108,0.12);
+  transition: transform 0.2s;
+  user-select: none;
+  font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji', sans-serif;
 }
-
+.el-table__row:hover .category-icon {
+  transform: scale(1.08);
+}
+.category-details {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.category-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .category-name {
   font-weight: 600;
+  font-size: 15px;
   color: #1f2937;
-  font-size: 14px;
 }
-
 .category-name-en {
   font-size: 12px;
-  color: #6b7280;
+  color: #9ca3af;
   margin-top: 2px;
+}
+.level-tag {
+  margin-left: 8px;
+}
+.el-table__row:hover {
+  background: #f0f7ff !important;
+}
+
+/* 树形视图样式 */
+.tree-view {
+  padding: 20px;
+}
+
+.category-tree {
+  background: transparent;
+}
+
+.tree-node {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 0;
+}
+
+.node-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.node-icon {
+  font-size: 18px;
+}
+
+.node-label {
+  font-weight: 500;
+  color: #374151;
+}
+
+.node-level {
+  background: #e5e7eb;
+  color: #6b7280;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.node-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.tree-node:hover .node-actions {
+  opacity: 1;
 }
 
 /* 意图统计 */
@@ -804,10 +1135,21 @@ onMounted(() => {
     align-items: flex-start;
   }
   
+  .header-left {
+    width: 100%;
+  }
+  
   .header-actions {
     width: 100%;
-    justify-content: space-between;
-    }
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  
+  .header-actions .el-radio-group,
+  .header-actions .el-select,
+  .header-actions .el-input {
+    margin-bottom: 8px;
+  }
 }
 
 .page-header {

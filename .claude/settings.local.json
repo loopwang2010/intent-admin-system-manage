@@ -29,7 +29,9 @@
       "Bash(git push:*)",
       "Bash(git remote:*)",
       "Bash(git pull:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(cut:*)",
+      "Bash(python3:*)"
     ],
     "deny": []
   }

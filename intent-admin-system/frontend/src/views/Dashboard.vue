@@ -15,7 +15,7 @@
             <div class="stats-content">
               <div class="stats-icon categories">📁</div>
               <div class="stats-info">
-                <h3>15</h3>
+                <h3>{{ stats.categories }}</h3>
                 <p>意图分类</p>
               </div>
             </div>
@@ -27,9 +27,9 @@
             <div class="stats-content">
               <div class="stats-icon core-intents">⭐</div>
               <div class="stats-info">
-                <h3>44</h3>
+                <h3>{{ stats.coreIntents }}</h3>
                 <p>核心意图</p>
-                <small>活跃: 44</small>
+                <small>活跃: {{ stats.activeCoreIntents }}</small>
               </div>
             </div>
           </div>
@@ -40,9 +40,9 @@
             <div class="stats-content">
               <div class="stats-icon non-core-intents">📋</div>
               <div class="stats-info">
-                <h3>23</h3>
+                <h3>{{ stats.nonCoreIntents }}</h3>
                 <p>非核心意图</p>
-                <small>活跃: 23</small>
+                <small>活跃: {{ stats.activeNonCoreIntents }}</small>
               </div>
             </div>
           </div>
@@ -53,7 +53,7 @@
             <div class="stats-content">
               <div class="stats-icon responses">💬</div>
               <div class="stats-info">
-                <h3>313</h3>
+                <h3>{{ stats.responses }}</h3>
                 <p>回复模板</p>
               </div>
             </div>
@@ -192,13 +192,57 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { coreIntentsAPI } from '@/api/coreIntents'
+import { nonCoreIntentsAPI } from '@/api/nonCoreIntents'
+import { categoryAPI } from '@/api/categories'
 
 const router = useRouter()
 const testText = ref('')
 const testing = ref(false)
 const testResult = ref(null)
+
+// 统计数据
+const stats = ref({
+  categories: 15,
+  coreIntents: 0,
+  activeCoreIntents: 0,
+  nonCoreIntents: 0,
+  activeNonCoreIntents: 0,
+  responses: 313
+})
+
+// 获取统计数据
+const fetchStats = async () => {
+  try {
+    // 获取核心意图统计
+    const coreResponse = await coreIntentsAPI.getList({ limit: 1000 })
+    if (coreResponse.data.intents) {
+      stats.value.coreIntents = coreResponse.data.intents.length
+      stats.value.activeCoreIntents = coreResponse.data.intents.filter(intent => intent.status === 'active').length
+    }
+
+    // 获取非核心意图统计
+    const nonCoreResponse = await nonCoreIntentsAPI.getList({ limit: 1000 })
+    if (nonCoreResponse.data.intents) {
+      stats.value.nonCoreIntents = nonCoreResponse.data.intents.length
+      stats.value.activeNonCoreIntents = nonCoreResponse.data.intents.filter(intent => intent.status === 'active').length
+    }
+
+    // 获取分类统计
+    const categoryResponse = await categoryAPI.getCategories()
+    if (categoryResponse.data.categories) {
+      stats.value.categories = categoryResponse.data.categories.length
+    }
+  } catch (error) {
+    console.error('获取统计数据失败:', error)
+  }
+}
+
+onMounted(() => {
+  fetchStats()
+})
 
 const quickTest = async () => {
   if (!testText.value.trim()) {

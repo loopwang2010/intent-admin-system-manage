@@ -1,0 +1,102 @@
+{
+  "core": [
+    {
+      "intentId": 60,
+      "intentName": "明天天气",
+      "subtype": "天气查询",
+      "firstResponse": "嗯嗯，马上为你查看天气～",
+      "alternativeCount": 0
+    },
+    {
+      "intentId": 61,
+      "intentName": "后天天气",
+      "subtype": "天气查询",
+      "firstResponse": "收到天气查询请求～",
+      "alternativeCount": 0
+    },
+    {
+      "intentId": 1,
+      "intentName": "播放音乐",
+      "subtype": "播放功能",
+      "firstResponse": "播放准备中，请稍候～",
+      "alternativeCount": 0
+    },
+    {
+      "intentId": 122,
+      "intentName": "时间查询",
+      "subtype": "时间查询",
+      "firstResponse": "好的，时间信息马上就来～",
+      "alternativeCount": 0
+    },
+    {
+      "intentId": 134,
+      "intentName": "财经新闻",
+      "subtype": "新闻资讯",
+      "firstResponse": "收到～马上就好～",
+      "alternativeCount": 0
+    },
+    {
+      "intentId": 38,
+      "intentName": "体育新闻",
+      "subtype": "新闻资讯",
+      "firstResponse": "好的，我来帮你处理～",
+      "alternativeCount": 0
+    },
+    {
+      "intentId": 141,
+      "intentName": "热点新闻",
+      "subtype": "新闻资讯",
+      "firstResponse": "嗯嗯，收到～正在处理中～",
+      "alternativeCount": 0
+    },
+    {
+      "intentId": 135,
+      "intentName": "科技新闻",
+      "subtype": "新闻资讯",
+      "firstResponse": "嗯，请求收到～",
+      "alternativeCount": 0
+    },
+    {
+      "intentId": 3,
+      "intentName": "查询天气",
+      "subtype": "搜索功能",
+      "firstResponse": "嗯，让我为你查找信息～",
+      "alternativeCount": 0
+    },
+    {
+      "intentId": 40,
+      "intentName": "定时提醒",
+      "subtype": "设置提醒",
+      "firstResponse": "好的，我来为你安排提醒～",
+      "alternativeCount": 0
+    },
+    {
+      "intentId": 95,
+      "intentName": "头条新闻",
+      "subtype": "新闻资讯",
+      "firstResponse": "嗯，请求收到～",
+      "alternativeCount": 0
+    },
+    {
+      "intentId": 90,
+      "intentName": "倒计时",
+      "subtype": "设置提醒",
+      "firstResponse": "嗯嗯，我来帮你记住这件事～",
+      "alternativeCount": 0
+    },
+    {
+      "intentId": 136,
+      "intentName": "娱乐新闻",
+      "subtype": "新闻资讯",
+      "firstResponse": "收到～马上就好～",
+      "alternativeCount": 0
+    }
+  ],
+  "nonCore": [],
+  "summary": {
+    "totalProcessed": 10000,
+    "coreIntentResponses": 13,
+    "nonCoreIntentResponses": 0,
+    "extractedAt": "2025-07-13T05:34:35.728Z"
+  }
+}

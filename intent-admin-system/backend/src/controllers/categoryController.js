@@ -1,34 +1,50 @@
 // 分类管理控制器 - 完整版本
-const { IntentCategory, CoreIntent, NonCoreIntent, sequelize } = require('../models')
+const { Op } = require('sequelize')
+const {
+  IntentCategory, CoreIntent, NonCoreIntent, sequelize
+} = require('../models')
 const { logOperation } = require('../middleware/auditLogger')
 const { OPERATION_TYPES } = require('../constants/operationTypes')
-const { Op } = require('sequelize')
 
 const getList = async (req, res) => {
   try {
-    const { 
-      includeStats = 'true', 
-      status, 
+    const {
+      includeStats = 'true',
+      status,
       search,
       page = 1,
       limit = 50,
       sortBy = 'sortOrder',
-      sortOrder = 'ASC'
+      sortOrder = 'ASC',
+      level, // 添加层级筛选
+      parentId, // 添加父分类筛选
+      treeMode = 'false' // 添加树形模式
     } = req.query
 
     const where = {}
-    
+
     // 状态筛选
     if (status) {
       where.status = status
     }
-    
+
+    // 层级筛选
+    if (level) {
+      where.level = parseInt(level)
+    }
+
+    // 父分类筛选
+    if (parentId) {
+      where.parentId = parentId === 'null' ? null : parseInt(parentId)
+    }
+
     // 搜索条件
     if (search) {
       where[Op.or] = [
         { name: { [Op.like]: `%${search}%` } },
         { nameEn: { [Op.like]: `%${search}%` } },
-        { description: { [Op.like]: `%${search}%` } }
+        { description: { [Op.like]: `%${search}%` } },
+        { code: { [Op.like]: `%${search}%` } }
       ]
     }
 
@@ -39,30 +55,48 @@ const getList = async (req, res) => {
       offset: (page - 1) * limit
     }
 
+    // 树形模式包含子分类
+    if (treeMode === 'true') {
+      options.include = [
+        {
+          model: IntentCategory,
+          as: 'Children',
+          required: false,
+          where: { status: status || 'active' }
+        },
+        {
+          model: IntentCategory,
+          as: 'Parent',
+          required: false,
+          attributes: ['id', 'name', 'code', 'color']
+        }
+      ]
+    }
+
     // 如果需要统计信息，分别查询
     if (includeStats === 'true') {
       // 先获取分类列表
       const { count, rows } = await IntentCategory.findAndCountAll(options)
-      
+
       // 然后为每个分类获取统计信息
       const categories = await Promise.all(rows.map(async (category) => {
         const categoryData = category.toJSON()
-        
+
         // 获取核心意图数量
         const coreIntentCount = await CoreIntent.count({
           where: { categoryId: category.id }
         })
-        
+
         // 获取非核心意图数量
         const nonCoreIntentCount = await NonCoreIntent.count({
           where: { categoryId: category.id }
         })
-        
+
         categoryData.coreIntentCount = coreIntentCount
         categoryData.nonCoreIntentCount = nonCoreIntentCount
         categoryData.totalIntentCount = coreIntentCount + nonCoreIntentCount
         categoryData.totalUsageCount = 0 // 简化处理
-        
+
         return categoryData
       }))
 
@@ -81,8 +115,8 @@ const getList = async (req, res) => {
     } else {
       // 不需要统计信息，直接查询
       const { count, rows } = await IntentCategory.findAndCountAll(options)
-      
-      const categories = rows.map(category => category.toJSON())
+
+      const categories = rows.map((category) => category.toJSON())
 
       res.json({
         success: true,
@@ -110,15 +144,34 @@ const getList = async (req, res) => {
 const getById = async (req, res) => {
   try {
     const { id } = req.params
-    const { includeIntents = 'false' } = req.query
+    const { includeIntents = 'false', includeTree = 'false' } = req.query
 
     const options = {
       where: { id: parseInt(id) }
     }
 
+    // 包含层级关系
+    if (includeTree === 'true') {
+      options.include = [
+        {
+          model: IntentCategory,
+          as: 'Children',
+          required: false,
+          attributes: ['id', 'name', 'code', 'color', 'level', 'sortOrder', 'status']
+        },
+        {
+          model: IntentCategory,
+          as: 'Parent',
+          required: false,
+          attributes: ['id', 'name', 'code', 'color', 'level']
+        }
+      ]
+    }
+
     // 包含意图信息
     if (includeIntents === 'true') {
-      options.include = [
+      if (!options.include) options.include = []
+      options.include.push(
         {
           model: CoreIntent,
           as: 'CoreIntents',
@@ -129,7 +182,7 @@ const getById = async (req, res) => {
           as: 'NonCoreIntents',
           attributes: ['id', 'name', 'description', 'status', 'usageCount', 'confidence', 'priority']
         }
-      ]
+      )
     }
 
     const category = await IntentCategory.findOne(options)
@@ -148,8 +201,8 @@ const getById = async (req, res) => {
       categoryData.intentStats = {
         coreIntentCount: categoryData.CoreIntents ? categoryData.CoreIntents.length : 0,
         nonCoreIntentCount: categoryData.NonCoreIntents ? categoryData.NonCoreIntents.length : 0,
-        totalIntentCount: (categoryData.CoreIntents ? categoryData.CoreIntents.length : 0) + 
-                         (categoryData.NonCoreIntents ? categoryData.NonCoreIntents.length : 0),
+        totalIntentCount: (categoryData.CoreIntents ? categoryData.CoreIntents.length : 0)
+                         + (categoryData.NonCoreIntents ? categoryData.NonCoreIntents.length : 0),
         totalUsageCount: [
           ...(categoryData.CoreIntents || []),
           ...(categoryData.NonCoreIntents || [])
@@ -182,7 +235,11 @@ const create = async (req, res) => {
       sortOrder = 0,
       status = 'active',
       tags,
-      version = '1.0.0'
+      version = '1.0.0',
+      parentId,
+      level = 1,
+      code,
+      color
     } = req.body
 
     if (!name) {
@@ -204,6 +261,23 @@ const create = async (req, res) => {
       })
     }
 
+    // 验证层级关系
+    if (parentId) {
+      const parentCategory = await IntentCategory.findByPk(parentId)
+      if (!parentCategory) {
+        return res.status(400).json({
+          success: false,
+          message: '父分类不存在'
+        })
+      }
+      if (parentCategory.level >= 2) {
+        return res.status(400).json({
+          success: false,
+          message: '最多支持两级分类，不能在二级分类下创建子分类'
+        })
+      }
+    }
+
     const categoryData = {
       name,
       nameEn,
@@ -214,10 +288,24 @@ const create = async (req, res) => {
       status,
       tags: typeof tags === 'string' ? tags : JSON.stringify(tags || []),
       version,
+      parentId: parentId || null,
+      level: parentId ? 2 : level,
+      code,
+      color,
+      isLeaf: !parentId || level === 2,
+      childrenCount: 0,
       createdBy: req.user?.id
     }
 
     const newCategory = await IntentCategory.create(categoryData)
+
+    // 如果是子分类，更新父分类的子分类计数
+    if (parentId) {
+      await sequelize.query(
+        'UPDATE intent_categories SET childrenCount = childrenCount + 1, isLeaf = 0 WHERE id = ?',
+        { replacements: [parentId] }
+      )
+    }
 
     // 记录操作日志
     await logOperation({
@@ -256,7 +344,10 @@ const update = async (req, res) => {
       sortOrder,
       status,
       tags,
-      version
+      version,
+      parentId,
+      code,
+      color
     } = req.body
 
     const category = await IntentCategory.findByPk(id)
@@ -271,7 +362,7 @@ const update = async (req, res) => {
     // 如果更新名称，检查是否重复
     if (name && name !== category.name) {
       const existingCategory = await IntentCategory.findOne({
-        where: { 
+        where: {
           name,
           id: { [Op.ne]: id }
         }
@@ -288,6 +379,48 @@ const update = async (req, res) => {
     const oldValues = category.toJSON()
     const updateData = {}
 
+    // 处理父分类变更
+    if (parentId !== undefined && parentId !== category.parentId) {
+      if (parentId) {
+        const newParent = await IntentCategory.findByPk(parentId)
+        if (!newParent) {
+          return res.status(400).json({
+            success: false,
+            message: '新父分类不存在'
+          })
+        }
+        if (newParent.level >= 2) {
+          return res.status(400).json({
+            success: false,
+            message: '不能将分类移动到二级分类下'
+          })
+        }
+      }
+
+      // 更新原父分类的子分类计数
+      if (category.parentId) {
+        await sequelize.query(
+          'UPDATE intent_categories SET childrenCount = childrenCount - 1 WHERE id = ?',
+          { replacements: [category.parentId] }
+        )
+      }
+
+      // 更新新父分类的子分类计数
+      if (parentId) {
+        await sequelize.query(
+          'UPDATE intent_categories SET childrenCount = childrenCount + 1, isLeaf = 0 WHERE id = ?',
+          { replacements: [parentId] }
+        )
+        updateData.level = 2
+        updateData.isLeaf = true
+      } else {
+        updateData.level = 1
+        updateData.isLeaf = category.childrenCount === 0
+      }
+
+      updateData.parentId = parentId
+    }
+
     // 只更新提供的字段
     if (name !== undefined) updateData.name = name
     if (nameEn !== undefined) updateData.nameEn = nameEn
@@ -298,7 +431,9 @@ const update = async (req, res) => {
     if (status !== undefined) updateData.status = status
     if (tags !== undefined) updateData.tags = typeof tags === 'string' ? tags : JSON.stringify(tags)
     if (version !== undefined) updateData.version = version
-    
+    if (code !== undefined) updateData.code = code
+    if (color !== undefined) updateData.color = color
+
     updateData.updatedBy = req.user?.id
 
     await category.update(updateData)
@@ -345,11 +480,27 @@ const deleteCategory = async (req, res) => {
       })
     }
 
+    // 检查是否有子分类
+    const childrenCount = await IntentCategory.count({
+      where: { parentId: id }
+    })
+
+    if (childrenCount > 0 && force !== 'true') {
+      return res.status(400).json({
+        success: false,
+        message: '该分类下还有子分类，请先删除所有子分类后再删除该分类',
+        data: {
+          childrenCount,
+          canForceDelete: true
+        }
+      })
+    }
+
     // 检查是否有关联的意图
     const coreIntentCount = await CoreIntent.count({
       where: { categoryId: id }
     })
-    
+
     const nonCoreIntentCount = await NonCoreIntent.count({
       where: { categoryId: id }
     })
@@ -364,6 +515,7 @@ const deleteCategory = async (req, res) => {
           coreIntentCount,
           nonCoreIntentCount,
           totalIntentCount,
+          childrenCount,
           canForceDelete: true
         }
       })
@@ -371,15 +523,32 @@ const deleteCategory = async (req, res) => {
 
     const oldValues = category.toJSON()
 
-    if (force === 'true' && totalIntentCount > 0) {
-      // 强制删除，先删除关联的意图
-      await CoreIntent.destroy({
-        where: { categoryId: id }
-      })
-      
-      await NonCoreIntent.destroy({
-        where: { categoryId: id }
-      })
+    if (force === 'true') {
+      // 强制删除，先删除子分类
+      if (childrenCount > 0) {
+        await IntentCategory.destroy({
+          where: { parentId: id }
+        })
+      }
+
+      // 删除关联的意图
+      if (totalIntentCount > 0) {
+        await CoreIntent.destroy({
+          where: { categoryId: id }
+        })
+
+        await NonCoreIntent.destroy({
+          where: { categoryId: id }
+        })
+      }
+    }
+
+    // 如果是子分类，更新父分类的子分类计数
+    if (category.parentId) {
+      await sequelize.query(
+        'UPDATE intent_categories SET childrenCount = childrenCount - 1 WHERE id = ?',
+        { replacements: [category.parentId] }
+      )
     }
 
     await category.destroy()
@@ -391,7 +560,7 @@ const deleteCategory = async (req, res) => {
       resourceId: parseInt(id),
       resourceName: category.name,
       oldValues,
-      metadata: { 
+      metadata: {
         action: 'delete_category',
         force: force === 'true',
         deletedIntentCount: totalIntentCount
@@ -400,9 +569,10 @@ const deleteCategory = async (req, res) => {
 
     res.json({
       success: true,
-      message: `分类删除成功${totalIntentCount > 0 ? `，同时删除了 ${totalIntentCount} 个关联意图` : ''}`,
+      message: `分类删除成功${childrenCount > 0 ? `，同时删除了 ${childrenCount} 个子分类` : ''}${totalIntentCount > 0 ? `，同时删除了 ${totalIntentCount} 个关联意图` : ''}`,
       data: {
-        deletedIntentCount: totalIntentCount
+        deletedIntentCount: totalIntentCount,
+        deletedChildrenCount: childrenCount
       }
     })
   } catch (error) {
@@ -455,7 +625,7 @@ const updateSort = async (req, res) => {
 const getStats = async (req, res) => {
   try {
     const { id } = req.params
-    const { 
+    const {
       period = '30', // 天数
       includeDetails = 'false'
     } = req.query
@@ -487,31 +657,31 @@ const getStats = async (req, res) => {
     ])
 
     const allIntents = [
-      ...coreIntents.map(intent => ({ ...intent.toJSON(), type: 'core' })),
-      ...nonCoreIntents.map(intent => ({ ...intent.toJSON(), type: 'non-core' }))
+      ...coreIntents.map((intent) => ({ ...intent.toJSON(), type: 'core' })),
+      ...nonCoreIntents.map((intent) => ({ ...intent.toJSON(), type: 'non-core' }))
     ]
 
     const stats = {
       totalIntents: allIntents.length,
       coreIntents: coreIntents.length,
       nonCoreIntents: nonCoreIntents.length,
-      activeIntents: allIntents.filter(intent => intent.status === 'active').length,
-      inactiveIntents: allIntents.filter(intent => intent.status === 'inactive').length,
-      draftIntents: allIntents.filter(intent => intent.status === 'draft').length,
+      activeIntents: allIntents.filter((intent) => intent.status === 'active').length,
+      inactiveIntents: allIntents.filter((intent) => intent.status === 'inactive').length,
+      draftIntents: allIntents.filter((intent) => intent.status === 'draft').length,
       totalUsage: allIntents.reduce((sum, intent) => sum + (intent.usageCount || 0), 0),
       totalSuccess: allIntents.reduce((sum, intent) => sum + (intent.successCount || 0), 0),
-      avgConfidence: allIntents.length > 0 ? 
-        allIntents.reduce((sum, intent) => sum + (intent.confidence || 0), 0) / allIntents.length : 0,
-      successRate: allIntents.reduce((sum, intent) => sum + (intent.usageCount || 0), 0) > 0 ?
-        allIntents.reduce((sum, intent) => sum + (intent.successCount || 0), 0) / 
-        allIntents.reduce((sum, intent) => sum + (intent.usageCount || 0), 0) : 0
+      avgConfidence: allIntents.length > 0
+        ? allIntents.reduce((sum, intent) => sum + (intent.confidence || 0), 0) / allIntents.length : 0,
+      successRate: allIntents.reduce((sum, intent) => sum + (intent.usageCount || 0), 0) > 0
+        ? allIntents.reduce((sum, intent) => sum + (intent.successCount || 0), 0)
+        / allIntents.reduce((sum, intent) => sum + (intent.usageCount || 0), 0) : 0
     }
 
     // 排行榜
     const topIntents = allIntents
       .sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0))
       .slice(0, 10)
-      .map(intent => ({
+      .map((intent) => ({
         id: intent.id,
         name: intent.name,
         type: intent.type,
@@ -529,9 +699,9 @@ const getStats = async (req, res) => {
     if (includeDetails === 'true') {
       result.intentDetails = {
         byStatus: {
-          active: allIntents.filter(intent => intent.status === 'active'),
-          inactive: allIntents.filter(intent => intent.status === 'inactive'),
-          draft: allIntents.filter(intent => intent.status === 'draft')
+          active: allIntents.filter((intent) => intent.status === 'active'),
+          inactive: allIntents.filter((intent) => intent.status === 'inactive'),
+          draft: allIntents.filter((intent) => intent.status === 'draft')
         },
         byType: {
           core: coreIntents,
@@ -567,20 +737,20 @@ const batchOperation = async (req, res) => {
 
     let message = ''
     switch (operation) {
-      case 'delete':
-        message = `成功删除 ${ids.length} 个分类`
-        break
-      case 'updateStatus':
-        message = `成功更新 ${ids.length} 个分类的状态为 ${data.status}`
-        break
-      case 'updateColor':
-        message = `成功更新 ${ids.length} 个分类的颜色`
-        break
-      default:
-        return res.status(400).json({
-          success: false,
-          message: '不支持的操作类型'
-        })
+    case 'delete':
+      message = `成功删除 ${ids.length} 个分类`
+      break
+    case 'updateStatus':
+      message = `成功更新 ${ids.length} 个分类的状态为 ${data.status}`
+      break
+    case 'updateColor':
+      message = `成功更新 ${ids.length} 个分类的颜色`
+      break
+    default:
+      return res.status(400).json({
+        success: false,
+        message: '不支持的操作类型'
+      })
     }
 
     res.json({
@@ -623,8 +793,8 @@ const exportData = async (req, res) => {
     if (format === 'csv') {
       res.setHeader('Content-Type', 'text/csv')
       res.setHeader('Content-Disposition', 'attachment; filename=categories.csv')
-      const csv = 'id,name,description,icon,color,sort\n' +
-        mockData.map(item => `${item.id},"${item.name}","${item.description}","${item.icon}","${item.color}",${item.sort}`).join('\n')
+      const csv = `id,name,description,icon,color,sort\n${
+        mockData.map((item) => `${item.id},"${item.name}","${item.description}","${item.icon}","${item.color}",${item.sort}`).join('\n')}`
       res.send(csv)
     } else {
       res.json({
@@ -674,7 +844,7 @@ const importData = async (req, res) => {
 
     res.json({
       success: true,
-      message: `分类导入完成`,
+      message: '分类导入完成',
       data: {
         imported,
         skipped,
@@ -717,7 +887,7 @@ const getCategoryAnalytics = async (req, res) => {
       ]
     })
 
-    const analytics = categories.map(category => {
+    const analytics = categories.map((category) => {
       const coreIntents = category.CoreIntents || []
       const nonCoreIntents = category.NonCoreIntents || []
       const allIntents = [...coreIntents, ...nonCoreIntents]
@@ -731,11 +901,11 @@ const getCategoryAnalytics = async (req, res) => {
         nonCoreIntents: nonCoreIntents.length,
         totalUsage: allIntents.reduce((sum, intent) => sum + (intent.usageCount || 0), 0),
         totalSuccess: allIntents.reduce((sum, intent) => sum + (intent.successCount || 0), 0),
-        successRate: allIntents.reduce((sum, intent) => sum + (intent.usageCount || 0), 0) > 0 ?
-          allIntents.reduce((sum, intent) => sum + (intent.successCount || 0), 0) / 
-          allIntents.reduce((sum, intent) => sum + (intent.usageCount || 0), 0) : 0,
-        avgConfidence: allIntents.length > 0 ?
-          allIntents.reduce((sum, intent) => sum + (intent.confidence || 0), 0) / allIntents.length : 0
+        successRate: allIntents.reduce((sum, intent) => sum + (intent.usageCount || 0), 0) > 0
+          ? allIntents.reduce((sum, intent) => sum + (intent.successCount || 0), 0)
+          / allIntents.reduce((sum, intent) => sum + (intent.usageCount || 0), 0) : 0,
+        avgConfidence: allIntents.length > 0
+          ? allIntents.reduce((sum, intent) => sum + (intent.confidence || 0), 0) / allIntents.length : 0
       }
     })
 
@@ -749,8 +919,8 @@ const getCategoryAnalytics = async (req, res) => {
         totalCategories: categories.length,
         totalIntents: analytics.reduce((sum, cat) => sum + cat.totalIntents, 0),
         totalUsage: analytics.reduce((sum, cat) => sum + cat.totalUsage, 0),
-        avgSuccessRate: analytics.length > 0 ?
-          analytics.reduce((sum, cat) => sum + cat.successRate, 0) / analytics.length : 0
+        avgSuccessRate: analytics.length > 0
+          ? analytics.reduce((sum, cat) => sum + cat.successRate, 0) / analytics.length : 0
       },
       categories: analytics,
       rankings: {
@@ -778,7 +948,7 @@ const getCategoryAnalytics = async (req, res) => {
 const getCategoryTrends = async (req, res) => {
   try {
     const { id } = req.params
-    const { 
+    const {
       period = '30',
       metric = 'usage'
     } = req.query
@@ -795,11 +965,11 @@ const getCategoryTrends = async (req, res) => {
     // 目前生成模拟数据
     const days = parseInt(period)
     const trends = []
-    
+
     for (let i = days - 1; i >= 0; i--) {
       const date = new Date()
       date.setDate(date.getDate() - i)
-      
+
       trends.push({
         date: date.toISOString().split('T')[0],
         usage: Math.floor(Math.random() * 50) + 10,
@@ -857,20 +1027,20 @@ const analyzeCategoryIntents = async (req, res) => {
     }
 
     const allIntents = [
-      ...(category.CoreIntents || []).map(intent => ({ ...intent.toJSON(), type: 'core' })),
-      ...(category.NonCoreIntents || []).map(intent => ({ ...intent.toJSON(), type: 'non-core' }))
+      ...(category.CoreIntents || []).map((intent) => ({ ...intent.toJSON(), type: 'core' })),
+      ...(category.NonCoreIntents || []).map((intent) => ({ ...intent.toJSON(), type: 'non-core' }))
     ]
 
     // 关键词分析
     const keywordAnalysis = {}
-    allIntents.forEach(intent => {
+    allIntents.forEach((intent) => {
       if (intent.keywords) {
         try {
-          const keywords = typeof intent.keywords === 'string' ? 
-            JSON.parse(intent.keywords) : intent.keywords
-          
+          const keywords = typeof intent.keywords === 'string'
+            ? JSON.parse(intent.keywords) : intent.keywords
+
           if (Array.isArray(keywords)) {
-            keywords.forEach(keyword => {
+            keywords.forEach((keyword) => {
               if (!keywordAnalysis[keyword]) {
                 keywordAnalysis[keyword] = {
                   keyword,
@@ -896,15 +1066,9 @@ const analyzeCategoryIntents = async (req, res) => {
 
     // 性能分析
     const performanceAnalysis = {
-      highPerformance: allIntents.filter(intent => 
-        (intent.confidence || 0) >= 0.8 && (intent.usageCount || 0) > 10
-      ),
-      lowPerformance: allIntents.filter(intent => 
-        (intent.confidence || 0) < 0.6 || (intent.successCount || 0) / Math.max(intent.usageCount || 1, 1) < 0.5
-      ),
-      underutilized: allIntents.filter(intent => 
-        (intent.usageCount || 0) < 5
-      )
+      highPerformance: allIntents.filter((intent) => (intent.confidence || 0) >= 0.8 && (intent.usageCount || 0) > 10),
+      lowPerformance: allIntents.filter((intent) => (intent.confidence || 0) < 0.6 || (intent.successCount || 0) / Math.max(intent.usageCount || 1, 1) < 0.5),
+      underutilized: allIntents.filter((intent) => (intent.usageCount || 0) < 5)
     }
 
     const analysis = {
@@ -917,8 +1081,8 @@ const analyzeCategoryIntents = async (req, res) => {
         core: (category.CoreIntents || []).length,
         nonCore: (category.NonCoreIntents || []).length,
         totalUsage: allIntents.reduce((sum, intent) => sum + (intent.usageCount || 0), 0),
-        avgConfidence: allIntents.length > 0 ?
-          allIntents.reduce((sum, intent) => sum + (intent.confidence || 0), 0) / allIntents.length : 0
+        avgConfidence: allIntents.length > 0
+          ? allIntents.reduce((sum, intent) => sum + (intent.confidence || 0), 0) / allIntents.length : 0
       },
       keywordAnalysis: {
         total: Object.keys(keywordAnalysis).length,
@@ -964,6 +1128,215 @@ const analyzeCategoryIntents = async (req, res) => {
   }
 }
 
+// 获取分类树结构
+const getCategoryTree = async (req, res) => {
+  try {
+    const { includeStats = 'false', status = 'active' } = req.query
+
+    // 获取所有一级分类及其子分类
+    const primaryCategories = await IntentCategory.findAll({
+      where: {
+        level: 1,
+        status
+      },
+      include: [
+        {
+          model: IntentCategory,
+          as: 'Children',
+          where: { status },
+          required: false,
+          attributes: ['id', 'name', 'nameEn', 'code', 'color', 'icon', 'level', 'sortOrder', 'status']
+        }
+      ],
+      order: [['sortOrder', 'ASC'], [{ model: IntentCategory, as: 'Children' }, 'sortOrder', 'ASC']]
+    })
+
+    const treeData = await Promise.all(primaryCategories.map(async (category) => {
+      const categoryData = category.toJSON()
+
+      if (includeStats === 'true') {
+        // 获取分类下的意图统计（包括子分类）
+        let coreIntentCount = 0
+        let nonCoreIntentCount = 0
+
+        // 当前分类的意图数量
+        coreIntentCount += await CoreIntent.count({ where: { categoryId: category.id } })
+        nonCoreIntentCount += await NonCoreIntent.count({ where: { categoryId: category.id } })
+
+        // 子分类的意图数量
+        if (categoryData.Children) {
+          for (const child of categoryData.Children) {
+            coreIntentCount += await CoreIntent.count({ where: { categoryId: child.id } })
+            nonCoreIntentCount += await NonCoreIntent.count({ where: { categoryId: child.id } })
+          }
+        }
+
+        categoryData.stats = {
+          coreIntentCount,
+          nonCoreIntentCount,
+          totalIntentCount: coreIntentCount + nonCoreIntentCount
+        }
+      }
+
+      return categoryData
+    }))
+
+    res.json({
+      success: true,
+      data: treeData
+    })
+  } catch (error) {
+    console.error('获取分类树失败:', error)
+    res.status(500).json({
+      success: false,
+      message: '获取分类树失败',
+      error: error.message
+    })
+  }
+}
+
+// 移动分类到新的父分类
+const moveCategory = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { newParentId } = req.body
+
+    const category = await IntentCategory.findByPk(id)
+    if (!category) {
+      return res.status(404).json({
+        success: false,
+        message: '分类不存在'
+      })
+    }
+
+    // 验证新父分类
+    if (newParentId) {
+      const newParent = await IntentCategory.findByPk(newParentId)
+      if (!newParent) {
+        return res.status(400).json({
+          success: false,
+          message: '新父分类不存在'
+        })
+      }
+      if (newParent.level >= 2) {
+        return res.status(400).json({
+          success: false,
+          message: '不能移动到二级分类下'
+        })
+      }
+      if (newParentId == id) {
+        return res.status(400).json({
+          success: false,
+          message: '不能将分类移动到自己下面'
+        })
+      }
+    }
+
+    const oldParentId = category.parentId
+
+    // 更新分类
+    await category.update({
+      parentId: newParentId || null,
+      level: newParentId ? 2 : 1,
+      updatedBy: req.user?.id
+    })
+
+    // 更新原父分类的子分类计数
+    if (oldParentId) {
+      await sequelize.query(
+        'UPDATE intent_categories SET childrenCount = childrenCount - 1 WHERE id = ?',
+        { replacements: [oldParentId] }
+      )
+    }
+
+    // 更新新父分类的子分类计数
+    if (newParentId) {
+      await sequelize.query(
+        'UPDATE intent_categories SET childrenCount = childrenCount + 1, isLeaf = 0 WHERE id = ?',
+        { replacements: [newParentId] }
+      )
+    }
+
+    // 记录操作日志
+    await logOperation({
+      operationType: OPERATION_TYPES.CATEGORY_UPDATE,
+      resource: 'category',
+      resourceId: category.id,
+      resourceName: category.name,
+      oldValues: { parentId: oldParentId },
+      newValues: { parentId: newParentId },
+      metadata: { action: 'move_category' }
+    }, req)
+
+    res.json({
+      success: true,
+      message: '分类移动成功',
+      data: category
+    })
+  } catch (error) {
+    console.error('移动分类失败:', error)
+    res.status(500).json({
+      success: false,
+      message: '移动分类失败',
+      error: error.message
+    })
+  }
+}
+
+// 获取分类的面包屑路径
+const getCategoryBreadcrumb = async (req, res) => {
+  try {
+    const { id } = req.params
+
+    const category = await IntentCategory.findByPk(id, {
+      include: [
+        {
+          model: IntentCategory,
+          as: 'Parent',
+          attributes: ['id', 'name', 'code', 'level']
+        }
+      ]
+    })
+
+    if (!category) {
+      return res.status(404).json({
+        success: false,
+        message: '分类不存在'
+      })
+    }
+
+    const breadcrumb = []
+
+    if (category.Parent) {
+      breadcrumb.push({
+        id: category.Parent.id,
+        name: category.Parent.name,
+        code: category.Parent.code,
+        level: category.Parent.level
+      })
+    }
+
+    breadcrumb.push({
+      id: category.id,
+      name: category.name,
+      code: category.code,
+      level: category.level
+    })
+
+    res.json({
+      success: true,
+      data: breadcrumb
+    })
+  } catch (error) {
+    console.error('获取分类面包屑失败:', error)
+    res.status(500).json({
+      success: false,
+      message: '获取分类面包屑失败',
+      error: error.message
+    })
+  }
+}
+
 module.exports = {
   getList,
   getById,
@@ -977,5 +1350,8 @@ module.exports = {
   import: importData,
   getCategoryAnalytics,
   getCategoryTrends,
-  analyzeCategoryIntents
-} 
+  analyzeCategoryIntents,
+  getCategoryTree,
+  moveCategory,
+  getCategoryBreadcrumb
+}

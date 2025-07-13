@@ -56,6 +56,36 @@ const IntentCategory = sequelize.define('IntentCategory', {
     type: Sequelize.STRING,
     defaultValue: '1.0.0'
   },
+  parentId: {
+    type: Sequelize.INTEGER,
+    allowNull: true,
+    comment: '父分类ID，NULL表示一级分类'
+  },
+  level: {
+    type: Sequelize.INTEGER,
+    defaultValue: 1,
+    comment: '分类层级，1为一级分类，2为二级分类'
+  },
+  code: {
+    type: Sequelize.STRING(50),
+    allowNull: true,
+    comment: '分类代码，用于API和路由'
+  },
+  color: {
+    type: Sequelize.STRING(20),
+    allowNull: true,
+    comment: '分类颜色标识'
+  },
+  isLeaf: {
+    type: Sequelize.BOOLEAN,
+    defaultValue: true,
+    comment: '是否叶子节点（无子分类）'
+  },
+  childrenCount: {
+    type: Sequelize.INTEGER,
+    defaultValue: 0,
+    comment: '子分类数量'
+  },
   createdBy: {
     type: Sequelize.INTEGER,
     comment: '创建用户ID'
@@ -658,6 +688,10 @@ CoreIntent.belongsTo(IntentCategory, { foreignKey: 'categoryId', as: 'Category' 
 
 IntentCategory.hasMany(NonCoreIntent, { foreignKey: 'categoryId', as: 'NonCoreIntents' })
 NonCoreIntent.belongsTo(IntentCategory, { foreignKey: 'categoryId', as: 'Category' })
+
+// 分类自关联（父子关系）
+IntentCategory.hasMany(IntentCategory, { foreignKey: 'parentId', as: 'Children' })
+IntentCategory.belongsTo(IntentCategory, { foreignKey: 'parentId', as: 'Parent' })
 
 CoreIntent.hasMany(PreResponse, { foreignKey: 'coreIntentId', as: 'Responses' })
 PreResponse.belongsTo(CoreIntent, { foreignKey: 'coreIntentId', as: 'CoreIntent' })

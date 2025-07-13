@@ -18,6 +18,12 @@ router.get('/analytics',
   categoryController.getCategoryAnalytics
 );
 
+// 获取分类树结构
+router.get('/tree', 
+  requirePermission(['category:read', '*']),
+  categoryController.getCategoryTree
+);
+
 // 导出分类数据
 router.get('/export', 
   requirePermission(['category:read', 'data:export', '*']),
@@ -70,6 +76,18 @@ router.get('/:id/trends',
 router.post('/:id/analyze', 
   requirePermission(['category:read', 'analytics:read', '*']),
   categoryController.analyzeCategoryIntents
+);
+
+// 获取分类面包屑路径
+router.get('/:id/breadcrumb', 
+  requirePermission(['category:read', '*']),
+  categoryController.getCategoryBreadcrumb
+);
+
+// 移动分类到新父分类
+router.put('/:id/move', 
+  requirePermission(['category:update', '*']),
+  categoryController.moveCategory
 );
 
 // 更新分类
